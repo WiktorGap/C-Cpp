@@ -1,0 +1,6 @@
+CREATE ROLE janek WITH LOGIN PASSWORD 'haslo123';
+CREATE ROLE programisci;
+CREATE ROLE supderadmin WITH SUPERUSER LOGIN PASSWORD 'superhaslo';
+
+CREATE TABLE moja_tabela(id SERIAL PRIMARY KEY,nazwa VARCHAR(255) NOT NULL) TAVLESPACE fast_storage;
+SELECT pg_reload_conf();
