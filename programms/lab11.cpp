@@ -1,95 +1,129 @@
-#include <iostream>
-#include <unordered_map>
-#include <string>
-#include <fstream>
-#include "json.hpp"
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <string.h>
+#include <pthread.h>
 
+#define DIGIT_COUNT 10
 
-using json = nlohmann::json;
-
-class Config
-{
-
-private:
-    Config() : MyFile(stringConfigFile), MyFileInt(intConfigFile)
-    {
-        std::string str;
-        std::string file_contents;
-        
-        while(std::getline(MyFile,str))
-        {
-            file_contents += str;
-            file_contents.push_back('\n');
-        }
-
-
-        stringConfig=json::parse(file_contents);
-
-        std::string str_;
-        std::string file_contents_;
-        while(std::getline(MyFileInt,str))
-        {
-            file_contents_ += str;
-            file_contents.push_back('\n');
-        }
-
-        intConfig=json::parse(file_contents_);
-
-
-    }
-public:
-
-    ~Config(){}
-
-    void set(const std::string &key, const std::string &value)
-    {
-        stringConfig[key]=value;
-    };
-    void set(const std::string &key, const int value)
-    {
-        intConfig[key]=value;
-    };
-    std::string getString(const std::string &key)
-    {
-            return stringConfig[key];
-    };
-    int getInt(const std::string &key)
-    {
-        return intConfig[key];
-    };
-
-
-
-
-
-void read() {
-    std::string jsonText = "{\"key\":\"value\",\"key2\":\"value2\",\"key3\":\"value3\"}";
-    json data = json::parse(jsonText);
-
-    std::unordered_map<std::string, std::string> conf = data;
-
-    for (const auto &entry : conf)
-    {
-        std::cout << entry.first << "=" << entry.second << std::endl;
-    }
-}
-
-private:
-    std::unordered_map<std::string,std::string> stringConfig;
-    std::unordered_map<std::string,int> intConfig;
-
-    const std::string stringConfigFile = "str_config.json";
-    const std::string intConfigFile = "int_config.json";
-
-    std::ifstream MyFile;
-    std::ifstream MyFileInt;
-
+struct context {
+    unsigned long count[DIGIT_COUNT];
+    pthread_mutex_t mutex;
 };
 
+void count_digits(const char *data, size_t start, size_t end, struct context *shared_context) {
+    unsigned long local_count[DIGIT_COUNT] = {0};
 
-int main()
-{
+    for (size_t i = start; i < end; i++) {
+        if (data[i] >= '0' && data[i] <= '9') {
+            local_count[data[i] - '0']++;
+        }
+    }
 
+    pthread_mutex_lock(&shared_context->mutex);
+    for (int i = 0; i < DIGIT_COUNT; i++) {
+        shared_context->count[i] += local_count[i];
+    }
+    pthread_mutex_unlock(&shared_context->mutex);
+}
 
-    return 0;
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s <file_path> <num_processes>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    const char *file_path = argv[1];
+    int num_processes = atoi(argv[2]);
+
+    if (num_processes < 1) {
+        fprintf(stderr, "Number of processes must be at least 1.\n");
+        return EXIT_FAILURE;
+    }
+
+    // Open file
+    int fd = open(file_path, O_RDONLY);
+    if (fd == -1) {
+        perror("Failed to open file");
+        return EXIT_FAILURE;
+    }
+
+    // Get file size
+    off_t file_size = lseek(fd, 0, SEEK_END);
+    if (file_size == -1) {
+        perror("Failed to determine file size");
+        close(fd);
+        return EXIT_FAILURE;
+    }
+
+    // Map file to memory
+    char *data = mmap(NULL, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (data == MAP_FAILED) {
+        perror("Failed to map file");
+        close(fd);
+        return EXIT_FAILURE;
+    }
+
+    close(fd);
+
+    // Allocate shared memory for context
+    struct context *shared_context = mmap(NULL, sizeof(struct context),
+                                          PROT_READ | PROT_WRITE,
+                                          MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if (shared_context == MAP_FAILED) {
+        perror("Failed to allocate shared memory");
+        munmap(data, file_size);
+        return EXIT_FAILURE;
+    }
+
+    // Initialize shared context
+    memset(shared_context->count, 0, sizeof(shared_context->count));
+    if (pthread_mutex_init(&shared_context->mutex, NULL) != 0) {
+        perror("Failed to initialize mutex");
+        munmap(shared_context, sizeof(struct context));
+        munmap(data, file_size);
+        return EXIT_FAILURE;
+    }
+
+    // Fork processes
+    size_t chunk_size = file_size / num_processes;
+    pid_t pids[num_processes];
+
+    for (int i = 0; i < num_processes; i++) {
+        size_t start = i * chunk_size;
+        size_t end = (i == num_processes - 1) ? file_size : start + chunk_size;
+
+        pids[i] = fork();
+        if (pids[i] == -1) {
+            perror("Fork failed");
+            return EXIT_FAILURE;
+        }
+
+        if (pids[i] == 0) { // Child process
+            count_digits(data, start, end, shared_context);
+            munmap(data, file_size);
+            munmap(shared_context, sizeof(struct context));
+            exit(EXIT_SUCCESS);
+        }
+    }
+
+    // Wait for child processes
+    for (int i = 0; i < num_processes; i++) {
+        waitpid(pids[i], NULL, 0);
+    }
+
+    // Print results
+    for (int i = 0; i < DIGIT_COUNT; i++) {
+        printf("Digit %d: %lu\n", i, shared_context->count[i]);
+    }
+
+    // Clean up
+    pthread_mutex_destroy(&shared_context->mutex);
+    munmap(shared_context, sizeof(struct context));
+    munmap(data, file_size);
+
+    return EXIT_SUCCESS;
 }
