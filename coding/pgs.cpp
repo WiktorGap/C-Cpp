@@ -13,23 +13,23 @@ class Table : public DataBase
 public:
     static int pesel;
 
-    // Konstruktor parametryczny
+    
     Table(const std::string &_name, const int &_id, const std::string &_surname, const char* _militaryCategory)
-        : name(_name), id(_id), surname(_surname) // poprawiono inicjalizację id (id już jest inicjalizowane w tej linii, więc nie trzeba _id)
+        : name(_name), id(_id), surname(_surname)
     {
         militaryCategory = new char[strlen(_militaryCategory) + 1];
         strcpy(militaryCategory, _militaryCategory);
     };
 
-    // Destruktor, aby zwolnić pamięć przydzieloną dla militaryCategory
+
     ~Table()
     {
         delete[] militaryCategory;
     }
 
-    // Konstruktor kopiujący
+   
     Table(const Table &source)
-        : name(source.name), surname(source.surname), id(source.id) // poprawiono inicjalizację id (id już jest inicjalizowane w tej linii)
+        : name(source.name), surname(source.surname), id(source.id) 
     {
         militaryCategory = new char[strlen(source.militaryCategory) + 1]; // alokacja pamięci dla głębokiej kopii
         strcpy(militaryCategory, source.militaryCategory); // kopiowanie zawartości militaryCategory
@@ -41,9 +41,9 @@ public:
         if(id < 0)
         {
             std::cout << "Id: " << id << " can not be less than 0\n"; // dodano nową linię
-            return false; // Zmieniono na wartość bool (powinna zwrócić false, jeśli id < 0)
+            return false; 
         }
-        return true; // Poprawiono, by zwrócić true, jeśli id jest poprawne
+        return true; 
     }
 
     Table& operator=(const Table& source)
@@ -54,15 +54,15 @@ public:
             surname = source.surname;
             id = source.id;
             delete [] militaryCategory;
-            militaryCategory = new char[strlen(source.militaryCategory) + 1]; // Poprawiono, by używać source.militaryCategory
-            strcpy(militaryCategory, source.militaryCategory); // kopiowanie zawartości militaryCategory
+            militaryCategory = new char[strlen(source.militaryCategory) + 1]; 
+            strcpy(militaryCategory, source.militaryCategory); 
         }
         return *this;
     }
 
     friend std::ostream& operator<<(std::ostream& out, const Table &other)
     {
-        out << "Name: " << other.name << " surname: " << other.surname << " id: " << other.id << " military category: " << other.militaryCategory; // Dodano "military category: "
+        out << "Name: " << other.name << " surname: " << other.surname << " id: " << other.id << " military category: " << other.militaryCategory; 
         return out;
     }
 
@@ -73,8 +73,8 @@ public:
 
     void showInfo() override
     {
-        std::cout << "Personal information\n"; // Poprawiono, by dodać nową linię po "Personal information"
-        std::cout << *this; // Poprawiono, by użyć "std::cout << *this" (poprzednia wersja poprawnie wywołuje operator<<)
+        std::cout << "Personal information\n";
+        std::cout << *this; 
     }
 
 private:
